@@ -1,0 +1,236 @@
+name: Slack Notifications
+
+# Demonstrates Slack notifications integration
+# Jenkins equivalent: slacknotify (slacknotify.groovy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Slack channel to notify'
+        required: false
+        type: string
+        default: '#builds'
+      message:
+        description: 'Custom message'
+        required: false
+        type: string
+        default: 'Build completed!'
+  push:
+    paths:
+      - '.github/workflows/slack-notifications.yml'
+
+# Required secret: SLACK_WEBHOOK_URL
+# Set via: gh secret set SLACK_WEBHOOK_URL --body "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+jobs:
+  build-with-slack-notify:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build application
+        id: build
+        run: |
+          echo "🔨 Building application..."
+          sleep 2
+          echo "✅ Build completed successfully"
+          echo "version=1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+      
+      - name: Send Slack notification (using webhook)
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "⚠️  SLACK_WEBHOOK_URL not set - skipping actual notification"
+            echo "Would send to Slack webhook"
+          else
+            # Prepare the JSON payload
+            PAYLOAD=$(cat <<EOF
+          {
+            "channel": "${{ github.event.inputs.channel || '#builds' }}",
+            "username": "GitHub Actions",
+            "icon_emoji": ":github:",
+            "text": "${{ github.event.inputs.message || 'Build completed!' }}",
+            "attachments": [
+              {
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "${{ job.status }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Build",
+                    "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>",
+                    "short": true
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+            )
+            
+            # Send to Slack
+            curl -X POST -H 'Content-type: application/json' \
+              --data "$PAYLOAD" \
+              "$SLACK_WEBHOOK_URL"
+            
+            echo "✅ Slack notification sent"
+          fi
+  
+  slack-notify-using-action:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run tests
+        id: tests
+        run: |
+          echo "🧪 Running tests..."
+          sleep 1
+          echo "✅ All tests passed"
+      
+      - name: Send success notification with action
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Tests passed for ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Tests Passed* :white_check_mark:\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+      
+      - name: Send failure notification
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Tests failed for ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Tests Failed* :x:\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Build:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  }
+                }
+              ]
+            }
+  
+  custom-slack-messages:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy application
+        id: deploy
+        run: |
+          echo "🚀 Deploying application..."
+          sleep 2
+          echo "✅ Deployment successful"
+          echo "env=production" >> $GITHUB_OUTPUT
+          echo "url=https://example.com" >> $GITHUB_OUTPUT
+      
+      - name: Send rich Slack notification
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "⚠️  SLACK_WEBHOOK_URL not set"
+            echo ""
+            echo "Would send rich notification:"
+            echo "- Environment: ${{ steps.deploy.outputs.env }}"
+            echo "- URL: ${{ steps.deploy.outputs.url }}"
+            echo "- Status: ${{ job.status }}"
+          else
+            # Create rich message with multiple sections
+            curl -X POST -H 'Content-type: application/json' \
+              --data '{
+                "text": "Deployment completed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "🚀 Deployment Notification"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Environment:*\n${{ steps.deploy.outputs.env }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Status:*\n${{ job.status }}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ steps.deploy.outputs.url }}|Visit Application> | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Build>"
+                    }
+                  }
+                ]
+              }' \
+              "$SLACK_WEBHOOK_URL"
+            
+            echo "✅ Rich Slack notification sent"
+          fi
+  
+  summary:
+    runs-on: ubuntu-latest
+    needs: [build-with-slack-notify, slack-notify-using-action, custom-slack-messages]
+    if: always()
+    
+    steps:
+      - name: Workflow summary
+        run: |
+          echo "📊 Slack Notification Workflow Summary"
+          echo ""
+          echo "Job Results:"
+          echo "- build-with-slack-notify: ${{ needs.build-with-slack-notify.result }}"
+          echo "- slack-notify-using-action: ${{ needs.slack-notify-using-action.result }}"
+          echo "- custom-slack-messages: ${{ needs.custom-slack-messages.result }}"
+          echo ""
+          echo "💡 To enable actual Slack notifications:"
+          echo "1. Create a Slack Incoming Webhook: https://api.slack.com/messaging/webhooks"
+          echo "2. Set the secret: gh secret set SLACK_WEBHOOK_URL --body \"YOUR_WEBHOOK_URL\""

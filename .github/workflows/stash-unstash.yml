@@ -1,0 +1,163 @@
+name: Stash and Unstash Artifacts
+
+# Demonstrates sharing artifacts between jobs (stash/unstash equivalent)
+# Jenkins equivalent: unstash-different-dir (unstashDifferentDir.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/stash-unstash.yml'
+
+jobs:
+  create-and-stash:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create output files
+        run: |
+          echo "📦 Creating files to share..."
+          mkdir -p output
+          echo "Hey look, some text." > output/somefile.txt
+          echo "More content here" > output/anotherfile.txt
+          echo "Build artifacts" > output/build.log
+          
+          echo "✅ Files created:"
+          ls -la output/
+      
+      - name: Upload artifact (stash equivalent)
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-stash
+          path: output/*
+          retention-days: 1
+  
+  unstash-in-subdirectory:
+    runs-on: ubuntu-latest
+    needs: create-and-stash
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Show workspace before unstash
+        run: |
+          echo "📂 Workspace contents before unstash:"
+          ls -la
+      
+      - name: Download artifact to subdirectory (unstash equivalent)
+        uses: actions/download-artifact@v4
+        with:
+          name: first-stash
+          path: first-stash/output
+      
+      - name: Verify no output in root
+        run: |
+          echo "📋 Root directory (no output folder here):"
+          ls -la
+          
+          if [ -d "output" ]; then
+            echo "❌ Output directory shouldn't exist in root!"
+            exit 1
+          else
+            echo "✅ Confirmed: no output directory in root"
+          fi
+      
+      - name: Verify files in subdirectory
+        run: |
+          echo "📋 Files under first-stash/output:"
+          ls -la first-stash/output/
+          
+          echo ""
+          echo "📄 Contents of somefile.txt:"
+          cat first-stash/output/somefile.txt
+          
+          echo ""
+          echo "✅ Successfully unstashed files in subdirectory!"
+  
+  multiple-stash-unstash:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create multiple artifact sets
+        run: |
+          echo "📦 Creating multiple artifact sets..."
+          
+          mkdir -p build
+          echo "Build output" > build/app.jar
+          
+          mkdir -p test-results
+          echo "Test results" > test-results/junit.xml
+          
+          mkdir -p docs
+          echo "Documentation" > docs/README.md
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: build/*
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/*
+      
+      - name: Upload documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/*
+  
+  consume-multiple-artifacts:
+    runs-on: ubuntu-latest
+    needs: multiple-stash-unstash
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+      
+      - name: Verify all artifacts downloaded
+        run: |
+          echo "📋 All downloaded artifacts:"
+          ls -la all-artifacts/
+          
+          echo ""
+          echo "📦 Build artifacts:"
+          ls -la all-artifacts/build-artifacts/
+          
+          echo ""
+          echo "🧪 Test results:"
+          ls -la all-artifacts/test-results/
+          
+          echo ""
+          echo "📚 Documentation:"
+          ls -la all-artifacts/documentation/
+          
+          echo ""
+          echo "✅ Successfully downloaded and organized multiple artifacts!"
+  
+  cross-workflow-artifacts:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Info about cross-workflow artifacts
+        run: |
+          echo "💡 Cross-workflow artifact sharing:"
+          echo ""
+          echo "In GitHub Actions, you can also download artifacts from other workflow runs"
+          echo "using the GitHub API or actions/download-artifact with a workflow run ID."
+          echo ""
+          echo "Example use cases:"
+          echo "- Sharing build artifacts between PR and merge workflows"
+          echo "- Keeping test results across multiple runs"
+          echo "- Creating deployment packages from successful builds"

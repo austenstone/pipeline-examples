@@ -1,0 +1,141 @@
+name: Post Conditions and Status
+
+# Demonstrates post-action conditions (always, success, failure, etc.)
+# Jenkins equivalent: postUnstable, postInStage (postUnstable.groovy, postInStage.groovy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_result:
+        description: 'Simulate build result'
+        required: false
+        type: choice
+        options:
+          - SUCCESS
+          - FAILURE
+          - UNSTABLE
+        default: 'SUCCESS'
+  push:
+    paths:
+      - '.github/workflows/post-conditions.yml'
+
+jobs:
+  build-with-post-conditions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Main build step
+        id: build
+        run: |
+          echo "🔨 Running build..."
+          BUILD_RESULT="${{ github.event.inputs.build_result || 'SUCCESS' }}"
+          echo "Simulating result: $BUILD_RESULT"
+          
+          if [ "$BUILD_RESULT" = "FAILURE" ]; then
+            echo "❌ Build failed!"
+            exit 1
+          elif [ "$BUILD_RESULT" = "UNSTABLE" ]; then
+            echo "⚠️  Build unstable!"
+            echo "unstable=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Build successful!"
+          fi
+      
+      - name: Always runs
+        if: always()
+        run: |
+          echo "📋 I ALWAYS run, regardless of build status"
+          echo "Job status: ${{ job.status }}"
+      
+      - name: Only on success
+        if: success()
+        run: |
+          echo "✅ This runs only when all previous steps succeeded"
+      
+      - name: Only on failure
+        if: failure()
+        run: |
+          echo "❌ This runs only when any previous step failed"
+          echo "Cleaning up after failure..."
+      
+      - name: Check if unstable
+        if: steps.build.outputs.unstable == 'true'
+        run: |
+          echo "⚠️  Build was marked as UNSTABLE"
+          echo "This would trigger additional analysis or notifications"
+  
+  stage-with-post-conditions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Stage execution
+        id: stage
+        run: |
+          echo "👋 Hello from stage"
+          RESULT="${{ github.event.inputs.build_result || 'SUCCESS' }}"
+          
+          if [ "$RESULT" = "FAILURE" ]; then
+            echo "result=failure" >> $GITHUB_OUTPUT
+            exit 1
+          elif [ "$RESULT" = "UNSTABLE" ]; then
+            echo "result=unstable" >> $GITHUB_OUTPUT
+          else
+            echo "result=success" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Stage always cleanup
+        if: always()
+        run: |
+          echo "🧹 Stage cleanup - always runs"
+      
+      - name: Stage success action
+        if: steps.stage.outputs.result == 'success'
+        run: |
+          echo "✅ Stage was successful"
+      
+      - name: Stage failure action
+        if: failure()
+        run: |
+          echo "❌ Stage failed"
+      
+      - name: Stage unstable action
+        if: steps.stage.outputs.result == 'unstable'
+        run: |
+          echo "⚠️  Stage is unstable"
+  
+  pipeline-post-conditions:
+    runs-on: ubuntu-latest
+    needs: [build-with-post-conditions, stage-with-post-conditions]
+    if: always()
+    
+    steps:
+      - name: Pipeline always runs
+        run: |
+          echo "📊 Pipeline post-conditions"
+          echo "build-with-post-conditions: ${{ needs.build-with-post-conditions.result }}"
+          echo "stage-with-post-conditions: ${{ needs.stage-with-post-conditions.result }}"
+      
+      - name: Pipeline success
+        if: needs.build-with-post-conditions.result == 'success' && needs.stage-with-post-conditions.result == 'success'
+        run: |
+          echo "✅ Entire pipeline succeeded!"
+      
+      - name: Pipeline failure
+        if: needs.build-with-post-conditions.result == 'failure' || needs.stage-with-post-conditions.result == 'failure'
+        run: |
+          echo "❌ Pipeline had failures"
+          echo "Would send failure notifications here"
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "📋 Pipeline Summary:"
+          echo "- Build job: ${{ needs.build-with-post-conditions.result }}"
+          echo "- Stage job: ${{ needs.stage-with-post-conditions.result }}"
+          echo "- Overall: ${{ job.status }}"
