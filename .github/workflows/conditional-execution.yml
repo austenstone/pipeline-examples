@@ -1,0 +1,47 @@
+name: Conditional Execution
+
+# Demonstrates branch-based conditional execution
+# Jenkins equivalent: whenBranchMaster (whenBranchMaster.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/conditional-execution.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/conditional-execution.yml'
+
+jobs:
+  always-run:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Always executes
+        run: |
+          echo "👋 Hello"
+          echo "This step runs on any branch"
+  
+  master-only:
+    runs-on: ubuntu-latest
+    # Only run this job on master branch
+    if: github.ref == 'refs/heads/master'
+    needs: always-run
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Master branch only
+        run: |
+          echo "🌍 World"
+          echo "🩹 Heal it"
+          echo "✅ This only runs on the master branch"
+      
+      - name: Display branch info
+        run: |
+          echo "Current branch: ${{ github.ref }}"
+          echo "Branch name: ${{ github.ref_name }}"

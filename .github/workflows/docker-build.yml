@@ -1,0 +1,56 @@
+name: Docker Build
+
+# Demonstrates building and running in a Docker container
+# Jenkins equivalent: dockerfileDefault (dockerfileDefault.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/docker-build.yml'
+      - 'Dockerfile'
+
+jobs:
+  docker-container-job:
+    runs-on: ubuntu-latest
+    
+    # Run the entire job inside a container
+    # This requires a Dockerfile in the repository root
+    # Uncomment when a Dockerfile is present:
+    # container:
+    #   image: Dockerfile
+    #   options: -v /tmp:/tmp -p 8000:8000
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create test Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM ubuntu:latest
+          RUN echo "Hello from Dockerfile" > /hi-there
+          RUN apt-get update && apt-get install -y curl
+          WORKDIR /workspace
+          EOF
+          echo "✅ Dockerfile created"
+      
+      - name: Build Docker image
+        run: |
+          echo "🐳 Building Docker image..."
+          docker build -t test-container .
+          echo "✅ Image built successfully"
+      
+      - name: Run commands in container
+        run: |
+          echo "🚀 Running container..."
+          docker run --rm -v /tmp:/tmp -p 8000:8000 test-container sh -c '
+            cat /hi-there 2>/dev/null || echo "File not found, but that'\''s okay"
+            echo "The answer is 42"
+            echo "✅ Container commands executed"
+          '
+      
+      - name: Alternative approach - Use container action
+        uses: docker://ubuntu:latest
+        with:
+          args: bash -c "echo '🎯 This step runs in a container via docker:// prefix' && echo 'The answer is still 42'"

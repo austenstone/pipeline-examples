@@ -1,0 +1,48 @@
+name: Archive Build Artifacts
+
+# Demonstrates artifact archiving in GitHub Actions
+# Jenkins equivalent: archive-build-output-artifacts (ArchiveBuildOutputArtifacts.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/archive-artifacts.yml'
+
+jobs:
+  archive-example:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create build output
+        run: |
+          echo "📦 Creating build output directory..."
+          mkdir -p output
+          
+          # Create a useful file that needs to be archived
+          echo "This file is useful, need to archive it." > output/usefulfile.txt
+          
+          # Create a useless file that shouldn't be archived
+          echo "This file is useless, no need to archive it." > output/uselessfile.md
+          
+          echo "✅ Build output created"
+      
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            output/*.txt
+            !output/*.md
+          retention-days: 30
+      
+      - name: Verify artifacts
+        run: |
+          echo "📋 Files that will be archived:"
+          ls -la output/*.txt || echo "No .txt files found"
+          echo ""
+          echo "🚫 Files that will be excluded:"
+          ls -la output/*.md || echo "No .md files found"

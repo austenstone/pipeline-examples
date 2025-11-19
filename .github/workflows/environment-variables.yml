@@ -1,0 +1,47 @@
+name: Environment Variables
+
+# Demonstrates workflow and job-level environment variables
+# Jenkins equivalent: environmentInStage (environmentInStage.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/environment-variables.yml'
+
+# Workflow-level environment variable (available to all jobs)
+env:
+  FOO: PIPELINE
+
+jobs:
+  local-scope:
+    runs-on: ubuntu-latest
+    
+    # Job-level environment variable (only available in this job)
+    env:
+      BAR: STAGE
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Display local environment variables
+        run: |
+          echo "🔍 Testing local scope..."
+          echo "FOO is $FOO and BAR is $BAR"
+          echo "✅ Both FOO (workflow-level) and BAR (job-level) are available"
+  
+  global-scope:
+    runs-on: ubuntu-latest
+    needs: local-scope
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Display global environment variables
+        run: |
+          echo "🔍 Testing global scope..."
+          echo "FOO is $FOO and BAR is $BAR"
+          echo "⚠️  Note: BAR is not defined in this job (expected to be empty)"
+          echo "✅ FOO (workflow-level) is available across all jobs"

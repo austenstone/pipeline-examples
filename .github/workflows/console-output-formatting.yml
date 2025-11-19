@@ -1,0 +1,31 @@
+name: Console Output Formatting
+
+# Demonstrates ANSI color output in GitHub Actions
+# Jenkins equivalent: ansi-color-build-wrapper (AnsiColorBuildWrapper.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/console-output-formatting.yml'
+
+jobs:
+  ansi-colors:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Display colored output
+        run: |
+          echo "GitHub Actions supports ANSI colors by default! 🎨"
+          echo -e "\033[31mI'm Red\033[0m Now not"
+          echo -e "\033[32mI'm Green\033[0m"
+          echo -e "\033[33mI'm Yellow\033[0m"
+          echo -e "\033[34mI'm Blue\033[0m"
+          echo -e "\033[35mI'm Magenta\033[0m"
+          echo -e "\033[36mI'm Cyan\033[0m"
+          echo -e "\033[1;31mI'm Bold Red\033[0m"
+          echo ""
+          echo "✅ Colors work natively in GitHub Actions - no plugin needed!"
