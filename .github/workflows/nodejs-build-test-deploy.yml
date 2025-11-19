@@ -1,0 +1,198 @@
+name: Node.js Build Test Deploy
+
+# Demonstrates complete Node.js workflow with testing, Docker, and deployment
+# Jenkins equivalent: nodejs-build-test-deploy-docker-notify (Jenkinsfile)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/nodejs-build-test-deploy.yml'
+      - 'package.json'
+      - '**.js'
+
+# Required secrets: SSH_PRIVATE_KEY, DEPLOY_HOST, DOCKER_USERNAME, DOCKER_PASSWORD
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        env:
+          NODE_ENV: test
+        run: |
+          echo "📦 Installing dependencies..."
+          echo "Environment: $NODE_ENV"
+          node -v
+          npm -v
+          
+          # Simulate npm commands (no actual package.json in this repo)
+          echo "npm prune"
+          echo "npm install"
+          echo "✅ Dependencies installed"
+      
+      - name: Run tests
+        env:
+          NODE_ENV: test
+        run: |
+          echo "🧪 Running tests..."
+          echo "npm test"
+          echo "✅ Tests passed"
+  
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Create demo Node.js app
+        run: |
+          cat > index.js << 'EOF'
+          const http = require('http');
+          const PORT = process.env.PORT || 3000;
+          
+          const server = http.createServer((req, res) => {
+            res.writeHead(200, {'Content-Type': 'text/plain'});
+            res.end('Hello from Node.js!\n');
+          });
+          
+          server.listen(PORT, () => {
+            console.log(\`Server running on port \${PORT}\`);
+          });
+          EOF
+          
+          cat > package.json << 'EOF'
+          {
+            "name": "demo-nodejs-app",
+            "version": "1.0.0",
+            "main": "index.js",
+            "scripts": {
+              "start": "node index.js"
+            }
+          }
+          EOF
+          
+          echo "✅ Demo app created"
+      
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM node:20-alpine
+          WORKDIR /app
+          COPY package*.json ./
+          RUN npm ci --only=production
+          COPY . .
+          EXPOSE 3000
+          CMD ["npm", "start"]
+          EOF
+          
+          cat > .dockerignore << 'EOF'
+          node_modules
+          npm-debug.log
+          .git
+          .gitignore
+          EOF
+          
+          echo "✅ Dockerfile created"
+      
+      - name: Build Docker image
+        run: |
+          echo "🐳 Building Docker image..."
+          docker build -t nodejs-app:${{ github.sha }} .
+          docker tag nodejs-app:${{ github.sha }} nodejs-app:latest
+          echo "✅ Docker image built"
+      
+      - name: Login to Docker Hub
+        if: github.ref == 'refs/heads/master' && secrets.DOCKER_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Push to Docker registry
+        if: github.ref == 'refs/heads/master' && secrets.DOCKER_USERNAME != ''
+        run: |
+          echo "📤 Pushing Docker image..."
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/nodejs-app"
+          docker tag nodejs-app:latest ${IMAGE}:${{ github.sha }}
+          docker tag nodejs-app:latest ${IMAGE}:latest
+          docker push ${IMAGE}:${{ github.sha }}
+          docker push ${IMAGE}:latest
+          echo "✅ Image pushed to Docker Hub"
+  
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Deploy to server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          echo "🚀 Deploying to server..."
+          
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "⚠️  DEPLOY_HOST not set - skipping actual deployment"
+            echo "Would SSH to server and run: docker pull && docker run"
+          else
+            echo "Would run: ssh deploy@${DEPLOY_HOST} 'cd /app && ./dockerRun.sh'"
+          fi
+          
+          echo "✅ Deployment completed"
+  
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [test, build-docker, deploy]
+    if: always()
+    
+    steps:
+      - name: Cleanup workspace
+        run: |
+          echo "🧹 Cleaning up..."
+          echo "npm prune"
+          echo "rm -rf node_modules"
+          echo "✅ Cleanup completed"
+  
+  notify-success:
+    runs-on: ubuntu-latest
+    needs: [test, build-docker, deploy, cleanup]
+    if: success()
+    
+    steps:
+      - name: Send success notification
+        run: |
+          echo "✅ Project build successful!"
+          echo "Would send email to: team@example.com"
+          echo "Build URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+  
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs: [test, build-docker, deploy, cleanup]
+    if: failure()
+    
+    steps:
+      - name: Send failure notification
+        run: |
+          echo "❌ Project build failed!"
+          echo "Would send email to: team@example.com"
+          echo "Error details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

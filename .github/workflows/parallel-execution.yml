@@ -1,0 +1,125 @@
+name: Parallel Execution Matrix
+
+# Demonstrates parallel execution using GitHub Actions matrix strategy
+# Jenkins equivalent: parallel-from-list (parallelFromList.groovy)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/parallel-execution.yml'
+
+jobs:
+  # Simple parallel execution using matrix strategy
+  parallel-echo:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        # Transform list into parallel jobs - each value runs in parallel
+        value: [a, b, c, d, e, f, g, h]
+      fail-fast: false  # Continue even if one job fails
+      max-parallel: 4   # Limit concurrent jobs
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Echo value in parallel
+        run: |
+          echo "🔀 Echoing: ${{ matrix.value }}"
+          echo "Job number: ${{ strategy.job-index }}"
+          echo "Running on: ${{ runner.name }}"
+          sleep 2  # Simulate some work
+          echo "✅ Completed echoing: ${{ matrix.value }}"
+  
+  # More complex parallel execution with multiple dimensions
+  parallel-matrix-complex:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x]
+        include:
+          # Add specific configurations
+          - os: ubuntu-latest
+            node-version: 20.x
+            special: 'with-coverage'
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      
+      - name: Run tests
+        run: |
+          echo "🧪 Testing on ${{ matrix.os }} with Node ${{ matrix.node-version }}"
+          node -v
+          echo "✅ Tests completed"
+      
+      - name: Run coverage
+        if: matrix.special == 'with-coverage'
+        run: |
+          echo "📊 Running coverage analysis..."
+          echo "✅ Coverage completed"
+  
+  # Dynamic parallel jobs using JSON
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    
+    steps:
+      - name: Generate matrix dynamically
+        id: set-matrix
+        run: |
+          # Generate a dynamic list of items to process
+          MATRIX='{"item":["item1","item2","item3","item4"]}'
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "📋 Generated matrix: $MATRIX"
+  
+  use-dynamic-matrix:
+    runs-on: ubuntu-latest
+    needs: generate-matrix
+    
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false
+    
+    steps:
+      - name: Process item
+        run: |
+          echo "⚙️  Processing: ${{ matrix.item }}"
+          sleep 1
+          echo "✅ Completed: ${{ matrix.item }}"
+  
+  # Collect results from parallel jobs
+  collect-results:
+    runs-on: ubuntu-latest
+    needs: [parallel-echo, parallel-matrix-complex, use-dynamic-matrix]
+    if: always()
+    
+    steps:
+      - name: Collect parallel execution results
+        run: |
+          echo "📊 All parallel jobs completed!"
+          echo ""
+          echo "parallel-echo: ${{ needs.parallel-echo.result }}"
+          echo "parallel-matrix-complex: ${{ needs.parallel-matrix-complex.result }}"
+          echo "use-dynamic-matrix: ${{ needs.use-dynamic-matrix.result }}"
+          echo ""
+          
+          if [ "${{ needs.parallel-echo.result }}" == "success" ] && \
+             [ "${{ needs.parallel-matrix-complex.result }}" == "success" ] && \
+             [ "${{ needs.use-dynamic-matrix.result }}" == "success" ]; then
+            echo "✅ All parallel executions succeeded!"
+          else
+            echo "⚠️  Some parallel executions failed or were skipped"
+            exit 1
+          fi

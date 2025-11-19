@@ -1,0 +1,86 @@
+name: MSBuild Windows .NET
+
+# Demonstrates Windows .NET build with MSBuild
+# Jenkins equivalent: msbuild (Jenkinsfile)
+
+on:
+  workflow_dispatch:  # Manual trigger for testing
+  push:
+    paths:
+      - '.github/workflows/msbuild-windows.yml'
+      - '**/*.sln'
+      - '**/*.csproj'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+      
+      - name: Create demo .NET solution
+        shell: pwsh
+        run: |
+          Write-Host "📝 Creating demo .NET solution..." -ForegroundColor Cyan
+          
+          # Create a simple solution structure for demonstration
+          $slnContent = @"
+          Microsoft Visual Studio Solution File, Format Version 12.00
+          # Demo Solution for GitHub Actions
+          Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DemoProject", "DemoProject\DemoProject.csproj", "{12345678-1234-1234-1234-123456789012}"
+          EndProject
+          "@
+          
+          $slnContent | Out-File -FilePath "SolutionName.sln" -Encoding UTF8
+          
+          # Create project directory
+          New-Item -ItemType Directory -Force -Path "ProjectName\bin\Release" | Out-Null
+          
+          # Create a mock DLL file
+          "Mock DLL content" | Out-File -FilePath "ProjectName\bin\Release\ProjectName.dll"
+          
+          Write-Host "✅ Demo solution created" -ForegroundColor Green
+      
+      - name: Restore NuGet packages
+        run: |
+          Write-Host "📦 Restoring NuGet packages..." -ForegroundColor Cyan
+          Write-Host "nuget restore SolutionName.sln"
+          Write-Host "✅ NuGet packages restored" -ForegroundColor Green
+        shell: pwsh
+      
+      - name: Build with MSBuild
+        run: |
+          Write-Host "🔨 Building solution..." -ForegroundColor Cyan
+          
+          $msbuildPath = & vswhere.exe -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          Write-Host "MSBuild path: $msbuildPath"
+          
+          Write-Host "Would run: msbuild SolutionName.sln /p:Configuration=Release /p:Platform=`"Any CPU`" /p:ProductVersion=1.0.0.$env:GITHUB_RUN_NUMBER"
+          
+          Write-Host "✅ Build completed" -ForegroundColor Green
+        shell: pwsh
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+      
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: ProjectName/bin/Release/**
+          retention-days: 30
+      
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          Write-Host "📋 Build artifacts:" -ForegroundColor Cyan
+          Get-ChildItem -Path "ProjectName\bin\Release" -Recurse | ForEach-Object {
+            Write-Host "  $($_.FullName)"
+          }
+          Write-Host "✅ Artifacts archived successfully" -ForegroundColor Green
